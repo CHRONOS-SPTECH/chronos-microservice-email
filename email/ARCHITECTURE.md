@@ -98,7 +98,9 @@ Traduzem requisições HTTP para os contratos da aplicação e convertem a respo
 | --- | --- |
 | `adapter/in/web/EmailController.java` | Expõe `POST /sending-email`, cria o comando e chama `SendEmailUseCase`. |
 | `adapter/in/web/EmailRequest.java` | Corpo aceito pela API; contém as validações de entrada (`@NotBlank` e `@Email`). |
+| `adapter/in/web/QueuedEmailRequest.java` | Corpo de entrada específico do envio assíncrono, com limites de tamanho para restringir mensagens publicadas na fila. |
 | `adapter/in/web/EmailResponse.java` | Corpo devolvido pela API; converte a entidade de domínio para o formato HTTP. |
+| `adapter/in/messaging/rabbitmq/SendEmailMessageConsumer.java` | Consome eventos da fila, valida o conteúdo e chama `SendEmailUseCase`. |
 
 ### Adapters de saída
 
@@ -107,6 +109,7 @@ Implementam as portas de saída usando ferramentas externas.
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `adapter/out/mail/SmtpEmailDeliveryGateway.java` | Implementa `EmailDeliveryGateway` com `JavaMailSender` e converte `MailException` para `EmailDeliveryException`. |
+| `adapter/out/messaging/rabbitmq/RabbitEmailQueuePublisher.java` | Publica mensagens JSON no RabbitMQ e aguarda confirmação do broker antes de aceitar a solicitação assíncrona. |
 | `adapter/out/persistence/EmailEntity.java` | Entidade JPA da tabela `TB_EMAIL`. É separada de `domain/model/Email.java` para que o domínio não dependa de JPA. |
 | `adapter/out/persistence/SpringDataEmailRepository.java` | Repositório técnico do Spring Data JPA. |
 | `adapter/out/persistence/JpaEmailRepository.java` | Implementa a porta `EmailRepository`; transforma `Email` em `EmailEntity` e vice-versa. |
@@ -118,6 +121,7 @@ Implementam as portas de saída usando ferramentas externas.
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `infrastructure/config/ApplicationConfiguration.java` | Cria e conecta os beans: relógio, gateway SMTP, repositório JPA e caso de uso. Esta é a única parte que decide quais implementações concretas serão usadas. |
+| `infrastructure/config/RabbitMqConfiguration.java` | Declara exchange, fila durável, bindings e fila de mensagens rejeitadas. A configuração só é ativada quando RabbitMQ está habilitado. |
 | `EmailApplication.java` | Inicializa o Spring Boot. |
 | `resources/application.properties` | Configura porta, conexão com banco e servidor SMTP. Não deve conter segredos reais versionados. |
 
@@ -143,6 +147,14 @@ EmailResponse → resposta HTTP 201
 ```
 
 Se o SMTP falhar, o adaptador lança `EmailDeliveryException`. O caso de uso registra o estado `ERROR` e ainda persiste o histórico do envio. Falhas de banco não são ocultadas.
+
+## Fluxo assíncrono com RabbitMQ
+
+`POST /sending-email` continua síncrono e mantém o contrato existente. `POST /sending-email/async` valida a mesma requisição, publica uma mensagem JSON com um identificador e responde `202 Accepted` após confirmação do RabbitMQ. O consumidor valida novamente a mensagem e chama o mesmo `SendEmailUseCase`; mensagens malformadas ou rejeitadas vão para `email.send.dlq` sem requeue infinito.
+
+A integração é desligada por padrão (`EMAIL_RABBITMQ_ENABLED=false`) para que a aplicação existente continue inicializando sem o broker. Para ativar, use `EMAIL_RABBITMQ_ENABLED=true` e configure `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME` e `RABBITMQ_PASSWORD`. Falhas que escapam do caso de uso recebem até três tentativas com espera crescente; mensagens ainda não processadas vão para a DLQ. Uma falha SMTP segue o comportamento existente: fica registrada como `ERROR`, sem tentativa automática adicional. As credenciais `guest` do padrão local não devem ser usadas em produção; restrinja o acesso ao broker e configure TLS na infraestrutura de produção.
+
+O processamento de fila é ao menos uma vez: uma interrupção entre o envio SMTP e o ACK pode ocasionar duplicidade. O `messageId` permite rastrear a mensagem, mas idempotência durável exige persistir e deduplicar esse identificador; isso não foi incluído neste fluxo básico.
 
 ## Contrato HTTP
 
