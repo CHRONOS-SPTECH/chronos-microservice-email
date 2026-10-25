@@ -1,39 +1,137 @@
-# Chronos microservice de e-mail
+# chronos-microservice-email
+Repositório sobre o Microserviço de e-mail
 
-Microserviço Spring Boot para envio de e-mail síncrono ou assíncrono via RabbitMQ. O envio assíncrono recebe uma requisição por destinatário. O envio SMTP local pode ser capturado pelo MailDev.
+| Repositório | Conteúdo |
+| --- | --- |
+| `chronos-platform-back` | API (Java 21 e Spring Boot) e script do banco de dados, na pasta `database` |
+| `chronos-platform-web` | Aplicação web (React) |
+| `chronos-microservice-email` | Serviço de envio de e-mails (opcional) |
 
-## Executar localmente
+---
 
-Requisitos: Java 21, Docker Compose e MySQL local (ou configure `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` e `SPRING_DATASOURCE_PASSWORD`). Na raiz do repositório, copie `.env.example` para `.env` e ajuste os valores se necessário. O Compose usa esse arquivo para configurar o RabbitMQ; exporte/carregue as mesmas variáveis no terminal que inicia o Spring.
+## Manual de Instalação
+
+### 1. Pré-requisitos
+
+- [JDK 21](https://adoptium.net/)
+- [Node.js 20](https://nodejs.org/) ou superior
+- [MySQL 8](https://dev.mysql.com/downloads/mysql/)
+- [Git](https://git-scm.com/)
+- [Docker](https://www.docker.com/) (apenas para o serviço de e-mail)
+
+### 2. Baixar o código
+
+```bash
+git clone https://github.com/CHRONOS-SPTECH/chronos-platform-back.git
+git clone https://github.com/CHRONOS-SPTECH/chronos-platform-web.git
+git clone https://github.com/CHRONOS-SPTECH/chronos-microservice-email.git
+```
+
+### 3. Criar o banco de dados
+
+Execute o script, que cria o banco `chronos_db` com as tabelas e os dados de configuração:
+
+```bash
+mysql -u root -p < chronos-platform-back/database/chronos_db.sql
+```
+
+No Windows (PowerShell): `Get-Content .\chronos-platform-back\database\chronos_db.sql | mysql -u root -p`. Também é possível executar o arquivo pelo MySQL Workbench.
+
+### 4. Iniciar a API
+
+Defina as variáveis de ambiente e inicie a API na pasta `chronos-platform-back/tech`:
+
+| Variável | Descrição |
+| --- | --- |
+| `DB_USERNAME` / `DB_PASSWORD` | Usuário e senha do MySQL |
+| `JWT_SECRET` | Chave dos tokens de login, com pelo menos 32 caracteres aleatórios |
+| `CRYPTO_ENCRYPTION_KEY` | Chave de criptografia da biometria. Defina antes de cadastrar dados reais e não altere depois |
+
+Windows (PowerShell):
+
+```powershell
+cd chronos-platform-back\tech
+$env:DB_USERNAME = "usuario"; $env:DB_PASSWORD = "senha"; $env:JWT_SECRET = "chave-com-pelo-menos-32-caracteres"
+.\mvnw.cmd spring-boot:run
+```
+
+Linux ou macOS:
+
+```bash
+cd chronos-platform-back/tech
+export DB_USERNAME=usuario DB_PASSWORD=senha JWT_SECRET=chave-com-pelo-menos-32-caracteres
+./mvnw spring-boot:run
+```
+
+A API fica disponível em `http://localhost:8080`, com a documentação em `http://localhost:8080/swagger-ui.html`.
+
+### 5. Criar o primeiro usuário
+
+O banco começa sem usuários. Crie o Administrador pelo Swagger, em `POST /auth/register`:
+
+```json
+{
+  "pessoa": {
+    "nome": "Nome do Administrador",
+    "email": "admin@instituicao.org",
+    "telefone": "11999990000",
+    "tipo_vinculo_id": 4
+  },
+  "email_login": "admin@instituicao.org",
+  "senha": "SenhaForte123"
+}
+```
+
+Os demais usuários são cadastrados pelo Administrador, dentro do sistema.
+
+### 6. Iniciar a aplicação web
+
+Na pasta `chronos-platform-web`:
+
+```bash
+cp .env.example .env
+npm install
+npm run dev
+```
+
+No Windows, use `Copy-Item .env.example .env` no lugar do `cp`. Acesse `http://localhost:5173`. Se a API estiver em outro endereço, ajuste `VITE_API_TARGET` no arquivo `.env`.
+
+Para produção, `npm run build` gera os arquivos na pasta `dist`. Configure o servidor web para encaminhar as requisições `/api/*` para a API, sem o prefixo `/api`.
+
+### 7. Serviço de e-mail (opcional)
+
+O serviço escuta a porta `8081` por padrão, deixando a porta `8080` livre para a API Chronos. Na raiz de `chronos-microservice-email`, prepare as configurações locais e inicie RabbitMQ e MailDev:
 
 ```powershell
 Copy-Item .env.example .env
 docker compose up -d rabbitmq maildev
-Set-Location email
-./mvnw spring-boot:run
 ```
 
-O serviço HTTP usa `http://localhost:8081` por padrão (o backend Chronos usa 8080). RabbitMQ recebe conexões AMQP em `localhost:5672` e o painel de administração fica em `http://localhost:15672`. MailDev recebe SMTP em `localhost:1025` e mostra as mensagens em `http://localhost:1080`.
-
-No PowerShell, para habilitar o consumidor/publicador, defina no terminal antes de iniciar o Spring:
+O `.env` configura os containers do Compose. O Spring Boot não carrega esse arquivo automaticamente; defina as variáveis no terminal onde iniciará o serviço. No PowerShell:
 
 ```powershell
-$env:EMAIL_RABBITMQ_ENABLED = 'true'
-$env:RABBITMQ_HOST = 'localhost'
-$env:RABBITMQ_PORT = '5672'
-$env:RABBITMQ_USERNAME = 'guest'
-$env:RABBITMQ_PASSWORD = 'guest'
-$env:SPRING_MAIL_HOST = 'localhost'
-$env:SPRING_MAIL_PORT = '1025'
-$env:SPRING_MAIL_USERNAME = ''
-$env:SPRING_MAIL_PASSWORD = ''
+$env:SERVER_PORT = "8081"
+$env:EMAIL_RABBITMQ_ENABLED = "true"
+$env:RABBITMQ_HOST = "localhost"
+$env:RABBITMQ_PORT = "5672"
+$env:RABBITMQ_USERNAME = "guest"
+$env:RABBITMQ_PASSWORD = "guest"
+$env:SPRING_MAIL_HOST = "localhost"
+$env:SPRING_MAIL_PORT = "1025"
+$env:SPRING_MAIL_USERNAME = ""
+$env:SPRING_MAIL_PASSWORD = ""
+$env:SPRING_DATASOURCE_URL = "jdbc:mysql://localhost:3306/msemail?createDatabaseIfNotExist=true"
+$env:SPRING_DATASOURCE_USERNAME = "root"
+$env:SPRING_DATASOURCE_PASSWORD = "senha-do-mysql"
+cd email
+.\mvnw.cmd spring-boot:run
 ```
 
-As variáveis `EMAIL_RABBITMQ_EXCHANGE`, `EMAIL_RABBITMQ_QUEUE`, `EMAIL_RABBITMQ_ROUTING_KEY`, `EMAIL_RABBITMQ_DLX`, `EMAIL_RABBITMQ_DLQ` e `EMAIL_RABBITMQ_DLQ_ROUTING_KEY` permitem personalizar os nomes; os padrões estão em `.env.example`. `SERVER_PORT` altera a porta HTTP. Para SMTP autenticado, configure usuário e senha (`SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`). `EMAIL_FROM` configura o remetente SMTP de envelope; o campo `emailFrom` continua sendo o remetente visível definido individualmente na requisição.
+O serviço HTTP fica em `http://localhost:8081`; RabbitMQ usa `localhost:5672` (painel em `http://localhost:15672`) e MailDev usa SMTP em `localhost:1025` (caixa de entrada em `http://localhost:1080`). Para executar em outra porta, ajuste `SERVER_PORT`. Configure banco e credenciais apenas por variáveis de ambiente, não no `application.properties`.
 
-## Integração com o backend Chronos
+O Chronos deve configurar `EMAIL_RABBITMQ_ENABLED=true`, `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME` e `RABBITMQ_PASSWORD` no ambiente do microserviço. SMTP pode ser configurado por `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD` e `EMAIL_FROM`. Os nomes da exchange/fila/roteamento têm padrões documentados no `.env.example` e só precisam ser definidos no Chronos se forem personalizados.
 
-O Chronos deve chamar uma vez por destinatário:
+O backend envia uma requisição por destinatário para `POST /sending-email/async`. Exemplo:
 
 ```http
 POST http://localhost:8081/sending-email/async
@@ -50,6 +148,52 @@ Content-Type: application/json
 }
 ```
 
-Com RabbitMQ habilitado, a resposta `202 Accepted` é enviada somente depois de o broker confirmar a publicação; a resposta contém `messageId` e `status`. Se a integração estiver desabilitada ou a publicação não for confirmada, o serviço responde `503 Service Unavailable`. O corpo `text` é enviado como HTML e o endereço de destino é validado. O Chronos precisa configurar `EMAIL_RABBITMQ_ENABLED=true`, `RABBITMQ_HOST`, `RABBITMQ_PORT`, `RABBITMQ_USERNAME` e `RABBITMQ_PASSWORD` no ambiente do microserviço. Os nomes de exchange/fila/roteamento devem coincidir entre os serviços caso sejam personalizados.
+Com o RabbitMQ habilitado, o endpoint responde `202 Accepted` após a confirmação da publicação. O campo `text` é enviado como HTML e o endereço do destinatário é validado. O endpoint síncrono `POST /sending-email` continua disponível.
 
-O endpoint síncrono `POST /sending-email` permanece disponível e mantém seu comportamento existente.
+---
+
+## Manual do Usuário
+
+### Acesso
+
+1. Abra o endereço do Chronos no navegador, no computador ou no celular.
+2. Informe e-mail e senha e clique em **Entrar no Sistema**.
+3. Escolha o perfil com que deseja trabalhar. Quem tem mais de uma função vê um cartão para cada perfil.
+
+A sessão expira após 24 horas. A recuperação de senha ainda não está ativa: peça ao Administrador para redefini-la. O botão azul à direita da tela abre a tradução para Libras (VLibras).
+
+### Instrutor
+
+- **Fazer a chamada:** clique em **Marcar Presença** na página inicial ou em **Chamada do dia** no menu. Confira a turma e o horário, ligue o botão dos alunos presentes e clique em **Salvar Chamada**.
+- **Minha Agenda:** mostra as aulas que você conduz.
+- A página inicial também exibe o cronograma do dia e os próximos eventos.
+
+### Secretária
+
+- **Página inicial:** atalhos para novo aluno, nova turma e cronograma, além das aulas do dia e das pendências.
+- **Alunos:** cadastre em **+ Novo Aluno**. Nome, e-mail, telefone e vínculo são obrigatórios; o CPF tem 11 números, sem pontos ou traço. Use os ícones da coluna **Ações** para ver, editar ou excluir.
+- **Turmas:** crie em **+ Nova Turma** e use **Ver alunos** para consultar os matriculados.
+- **Eventos:** cadastre título, data, horário e local; os eventos podem ser filtrados por situação.
+- **Cronograma de Aulas:** calendário por mês ou semana, com filtros por turma e instrutor. O botão **Pendências** lista as aulas sem data, que precisam ser agendadas.
+- **Gestão de Aulas:** lista todas as aulas. O botão **Importar Carga de Aulas** recebe uma planilha Excel (formato abaixo).
+- **Dashboard:** indicadores de membros, instrutores, gênero e faixa etária.
+
+**Planilha de importação:** as duas primeiras linhas são de cabeçalho e as aulas começam na linha 3. Cada dia ocupa um bloco de 6 colunas a partir da coluna B, nesta ordem: data (dd/mm/aaaa), horário (hh:mm), turma, tema da aula, professor e uma coluna vazia. Turma, tema e professor devem estar escritos exatamente como no cadastro. Aulas com conflito de horário entram sem data e aparecem em **Pendências**.
+
+### Administrador
+
+Tem acesso à dashboard, a alunos, turmas e eventos e a **Controle de Acesso > Usuários**, onde cadastra, edita e exclui os usuários e define o perfil de cada um.
+
+---
+
+## Problemas comuns
+
+| Problema | Solução |
+| --- | --- |
+| A API não inicia por falta de `DB_USERNAME`, `DB_PASSWORD` ou `JWT_SECRET` | Defina as variáveis no mesmo terminal em que executa o `mvnw` |
+| Erro de tabela ou coluna ausente ao iniciar a API | Crie o banco novamente com o script `chronos_db.sql` |
+| Serviço de e-mail responde 503 em `/sending-email/async` | Inicie o RabbitMQ e defina `EMAIL_RABBITMQ_ENABLED=true` no terminal do microserviço |
+| Porta 8080 em uso | A API Chronos usa 8080; o serviço de e-mail usa 8081 por padrão. Ajuste `SERVER_PORT` se necessário |
+| Login falha com erro de rede | Verifique se a API está rodando e se `VITE_API_TARGET` aponta para ela |
+| Nenhum perfil aparece após o login | Peça ao Administrador para atribuir um perfil ao usuário |
+| A importação recusa linhas | Confira os nomes de turma, tema e professor e os formatos de data e hora |
