@@ -100,7 +100,7 @@ Para produção, `npm run build` gera os arquivos na pasta `dist`. Configure o s
 
 ### 7. Serviço de e-mail (opcional)
 
-O serviço escuta a porta `8081` por padrão, deixando a porta `8080` livre para a API Chronos. Na raiz de `chronos-microservice-email`, prepare as configurações locais e inicie RabbitMQ e MailDev:
+O serviço escuta a porta `8081` por padrão, deixando a porta `8080` livre para a API Chronos. Na raiz do repositório, prepare as configurações locais e inicie RabbitMQ e MailDev:
 
 ```powershell
 Copy-Item .env.example .env
@@ -123,9 +123,10 @@ $env:SPRING_MAIL_PASSWORD = ""
 $env:SPRING_DATASOURCE_URL = "jdbc:mysql://localhost:3306/msemail?createDatabaseIfNotExist=true"
 $env:SPRING_DATASOURCE_USERNAME = "root"
 $env:SPRING_DATASOURCE_PASSWORD = "senha-do-mysql"
-cd email
 .\mvnw.cmd spring-boot:run
 ```
+
+Linux ou macOS: defina as mesmas variáveis com `export` e inicie com `./mvnw spring-boot:run`.
 
 O serviço HTTP fica em `http://localhost:8081`; RabbitMQ usa `localhost:5672` (painel em `http://localhost:15672`) e MailDev usa SMTP em `localhost:1025` (caixa de entrada em `http://localhost:1080`). Para executar em outra porta, ajuste `SERVER_PORT`. Configure banco e credenciais apenas por variáveis de ambiente, não no `application.properties`.
 
